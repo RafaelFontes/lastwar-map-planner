@@ -4,3 +4,6 @@ map-clean.png
 tile-data.json
 tiles-visualization.png
 .playwright-mcp
+dist
+.env
+.env.local
