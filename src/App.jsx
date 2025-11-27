@@ -3,13 +3,32 @@ import { Header } from './components/Header/Header';
 import { MapCanvas } from './components/MapCanvas/MapCanvas';
 import { TileList } from './components/TileList/TileList';
 import { Sidebar } from './components/Sidebar/Sidebar';
+import { ProfileModal } from './components/ProfileModal/ProfileModal';
+import { AllianceModal } from './components/AllianceModal/AllianceModal';
 import { useMapEditor } from './hooks/useMapEditor';
 import { useCanvasControls } from './hooks/useCanvasControls';
 import { useAuth } from './contexts/AuthContext';
+import { useGameState } from './contexts/GameStateContext';
+import { usePlanner } from './contexts/PlannerContext';
 
 function App() {
   const { user } = useAuth();
+  const { tileClaims, loading: gameStateLoading } = useGameState();
+  const {
+    isPlannerMode,
+    plannedTileClaims,
+    isPlaying,
+    playbackTileClaims,
+    playbackHighlightTileId
+  } = usePlanner();
   const isReadOnly = !user;
+
+  // Use playback claims during playback, otherwise planned claims in planner mode, otherwise normal claims
+  const displayClaims = isPlaying && playbackTileClaims
+    ? playbackTileClaims
+    : isPlannerMode
+      ? plannedTileClaims
+      : tileClaims;
   const {
     isLoading,
     tileGeometry,
@@ -20,9 +39,9 @@ function App() {
     setTileData,
     clearTileData,
     selectTile,
-    moveLabelOffset,
-    addComment,
-    getComments,
+    getLikes,
+    getLikeSummary,
+    vote,
     activeTab,
     setActiveTab,
     tileFilter,
@@ -44,6 +63,7 @@ function App() {
 
   // Handle tile click from map
   const handleTileClick = useCallback((tileInfo) => {
+    // Just select the tile - claim/unclaim actions are triggered from buttons
     selectTile(tileInfo);
   }, [selectTile]);
 
@@ -57,12 +77,13 @@ function App() {
     }
   }, [tileGeometry, selectTile]);
 
-  // Get current tile data and comments
+  // Get current tile data and likes
   const currentTileData = selectedTile ? getTileData(selectedTile.id) : {};
-  const currentComments = selectedTile ? getComments(selectedTile.id) : [];
+  const currentLikes = selectedTile ? getLikes(selectedTile.id) : [];
+  const currentLikeSummary = selectedTile ? getLikeSummary(selectedTile.id) : { likes: 0, dislikes: 0, userVote: null };
   const labeledTiles = getLabeledTiles();
 
-  if (isLoading) {
+  if (isLoading || gameStateLoading) {
     return (
       <div className="w-full h-screen flex flex-col bg-discord-dark overflow-hidden">
         <div className="flex items-center justify-center flex-1 text-xl text-discord-text-muted">
@@ -74,15 +95,18 @@ function App() {
 
   return (
     <div className="w-full h-screen flex flex-col bg-discord-dark overflow-hidden">
+      <ProfileModal />
+      <AllianceModal />
       <Header scale={scale} onZoom={zoom} />
 
       <div className="flex flex-1 overflow-hidden max-md:flex-col">
         <MapCanvas
           tileGeometry={tileGeometry}
           tiles={tiles}
+          tileClaims={displayClaims}
           selectedTile={selectedTile}
+          playbackHighlightTileId={playbackHighlightTileId}
           onTileClick={handleTileClick}
-          onLabelMove={moveLabelOffset}
           scale={scale}
           position={position}
           isPanning={isPanning}
@@ -95,6 +119,7 @@ function App() {
 
         <TileList
           labeledTiles={labeledTiles}
+          tileClaims={displayClaims}
           filter={tileFilter}
           onFilterChange={setTileFilter}
           onTileClick={handleTileListClick}
@@ -103,13 +128,13 @@ function App() {
         <Sidebar
           selectedTile={selectedTile}
           tileData={currentTileData}
-          comments={currentComments}
+          tiles={tiles}
+          likes={currentLikes}
+          likeSummary={currentLikeSummary}
           history={history}
           activeTab={activeTab}
           onTabChange={setActiveTab}
-          onSaveTile={setTileData}
-          onClearTile={clearTileData}
-          onAddComment={addComment}
+          onVote={vote}
           isReadOnly={isReadOnly}
         />
       </div>

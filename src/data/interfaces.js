@@ -13,7 +13,7 @@
 
 /**
  * @typedef {Object} TileData
- * @property {string} number - Tile number identifier
+ * @property {string} number - Tile number identifier (read-only, set once)
  * @property {string} name - Tile name/label
  * @property {string} icon - Emoji icon
  * @property {string} color - Hex color for tile background
@@ -31,8 +31,28 @@
 /**
  * @typedef {Object} HistoryEntry
  * @property {string} timestamp - Formatted date/time
- * @property {string} action - 'Created' | 'Updated' | 'Cleared'
- * @property {string} details - Description of what changed
+ * @property {string} action - 'claim' | 'unclaim'
+ * @property {string} details - Description of what changed (e.g., "claimed tile L1")
+ * @property {string} [user] - User display name
+ * @property {string} [allianceName] - Alliance name
+ * @property {string} [allianceColor] - Alliance color (hex)
+ * @property {number} [tileId] - Tile ID
+ */
+
+/**
+ * @typedef {Object} Like
+ * @property {string} id - Unique identifier
+ * @property {string} user - Author of the like/dislike
+ * @property {string} userId - User ID from auth
+ * @property {'like' | 'dislike'} type - Type of reaction
+ * @property {string} timestamp - Formatted date/time
+ */
+
+/**
+ * @typedef {Object} TileLikeSummary
+ * @property {number} likes - Total number of likes
+ * @property {number} dislikes - Total number of dislikes
+ * @property {'like' | 'dislike' | null} userVote - Current user's vote
  */
 
 /**
@@ -205,6 +225,61 @@ export class ITileGeometryRepository {
    * @returns {Promise<TileGeometry>}
    */
   async load() {
+    throw new Error('Not implemented');
+  }
+}
+
+/**
+ * Interface for likes storage
+ * @interface ILikeRepository
+ */
+export class ILikeRepository {
+  /**
+   * Get all likes grouped by tile
+   * @returns {Promise<Map<number, Like[]>>}
+   */
+  async getAll() {
+    throw new Error('Not implemented');
+  }
+
+  /**
+   * Get likes for a tile
+   * @param {number} tileId
+   * @returns {Promise<Like[]>}
+   */
+  async getForTile(tileId) {
+    throw new Error('Not implemented');
+  }
+
+  /**
+   * Get summary (counts) for a tile
+   * @param {number} tileId
+   * @param {string} [userId] - Optional user ID to check user's vote
+   * @returns {Promise<TileLikeSummary>}
+   */
+  async getSummary(tileId, userId) {
+    throw new Error('Not implemented');
+  }
+
+  /**
+   * Add or update a like/dislike for a tile
+   * @param {number} tileId
+   * @param {'like' | 'dislike'} type
+   * @param {string} user - Display name
+   * @param {string} userId - User ID from auth
+   * @returns {Promise<Like>}
+   */
+  async vote(tileId, type, user, userId) {
+    throw new Error('Not implemented');
+  }
+
+  /**
+   * Remove a vote from a tile
+   * @param {number} tileId
+   * @param {string} userId - User ID from auth
+   * @returns {Promise<void>}
+   */
+  async removeVote(tileId, userId) {
     throw new Error('Not implemented');
   }
 }

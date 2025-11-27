@@ -4,12 +4,14 @@ import {
   LocalStorageTileRepository,
   LocalStorageCommentRepository,
   LocalStorageHistoryRepository,
+  LocalStorageLikeRepository,
   FetchTileGeometryRepository
 } from '../data/localStorage/index.js';
 import {
   SupabaseTileRepository,
   SupabaseCommentRepository,
-  SupabaseHistoryRepository
+  SupabaseHistoryRepository,
+  SupabaseLikeRepository
 } from '../data/supabase/index.js';
 import { isSupabaseConfigured } from '../lib/supabase.js';
 
@@ -27,6 +29,7 @@ function createLocalRepositories() {
     tileRepository: new LocalStorageTileRepository(),
     commentRepository: new LocalStorageCommentRepository(),
     historyRepository: new LocalStorageHistoryRepository(),
+    likeRepository: new LocalStorageLikeRepository(),
     tileGeometryRepository: new FetchTileGeometryRepository()
   };
 }
@@ -40,6 +43,7 @@ function createSupabaseRepositories() {
     tileRepository: new SupabaseTileRepository(),
     commentRepository: new SupabaseCommentRepository(),
     historyRepository: new SupabaseHistoryRepository(),
+    likeRepository: new SupabaseLikeRepository(),
     tileGeometryRepository: new FetchTileGeometryRepository()
   };
 }

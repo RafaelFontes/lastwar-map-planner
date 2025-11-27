@@ -11,12 +11,14 @@ export class MapEditorService {
    * @param {import('../data/interfaces.js').ICommentRepository} repositories.commentRepository
    * @param {import('../data/interfaces.js').IHistoryRepository} repositories.historyRepository
    * @param {import('../data/interfaces.js').ITileGeometryRepository} repositories.tileGeometryRepository
+   * @param {import('../data/interfaces.js').ILikeRepository} repositories.likeRepository
    */
-  constructor({ tileRepository, commentRepository, historyRepository, tileGeometryRepository }) {
+  constructor({ tileRepository, commentRepository, historyRepository, tileGeometryRepository, likeRepository }) {
     this._tileRepository = tileRepository;
     this._commentRepository = commentRepository;
     this._historyRepository = historyRepository;
     this._tileGeometryRepository = tileGeometryRepository;
+    this._likeRepository = likeRepository;
   }
 
   // ============================================
@@ -201,6 +203,29 @@ export class MapEditorService {
   }
 
   /**
+   * Add a claim history entry
+   * @param {Object} params
+   * @param {number} params.tileId - Tile ID
+   * @param {'claim' | 'unclaim'} params.action - Action type
+   * @param {string} params.user - User display name
+   * @param {string} params.allianceName - Alliance name
+   * @param {string} params.allianceColor - Alliance color
+   * @returns {Promise<void>}
+   */
+  async addClaimHistory({ tileId, action, user, allianceName, allianceColor }) {
+    const details = `${action === 'claim' ? 'claimed' : 'unclaimed'} tile L${tileId}`;
+    const entry = {
+      action,
+      details,
+      user,
+      allianceName,
+      allianceColor,
+      tileId
+    };
+    await this._historyRepository.add(entry);
+  }
+
+  /**
    * Add a history entry based on tile changes
    * @param {number} tileId
    * @param {import('../data/interfaces.js').TileData} oldData
@@ -235,5 +260,58 @@ export class MapEditorService {
     const entry = { timestamp, action, details };
     await this._historyRepository.add(entry);
     return entry;
+  }
+
+  // ============================================
+  // Like Operations
+  // ============================================
+
+  /**
+   * Get all likes
+   * @returns {Promise<Map<number, import('../data/interfaces.js').Like[]>>}
+   */
+  async getAllLikes() {
+    return this._likeRepository.getAll();
+  }
+
+  /**
+   * Get likes for a specific tile
+   * @param {number} tileId
+   * @returns {Promise<import('../data/interfaces.js').Like[]>}
+   */
+  async getLikes(tileId) {
+    return this._likeRepository.getForTile(tileId);
+  }
+
+  /**
+   * Get like summary for a tile
+   * @param {number} tileId
+   * @param {string} [userId] - Optional user ID to check user's vote
+   * @returns {Promise<import('../data/interfaces.js').TileLikeSummary>}
+   */
+  async getLikeSummary(tileId, userId) {
+    return this._likeRepository.getSummary(tileId, userId);
+  }
+
+  /**
+   * Vote on a tile (like or dislike)
+   * @param {number} tileId
+   * @param {'like' | 'dislike'} type
+   * @param {string} user - Display name
+   * @param {string} userId - User ID from auth
+   * @returns {Promise<import('../data/interfaces.js').Like>}
+   */
+  async vote(tileId, type, user, userId) {
+    return this._likeRepository.vote(tileId, type, user, userId);
+  }
+
+  /**
+   * Remove vote from a tile
+   * @param {number} tileId
+   * @param {string} userId - User ID from auth
+   * @returns {Promise<void>}
+   */
+  async removeVote(tileId, userId) {
+    return this._likeRepository.removeVote(tileId, userId);
   }
 }

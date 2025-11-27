@@ -1,14 +1,15 @@
-import { useCallback, useRef } from 'react';
+import { useCallback } from 'react';
 import { Stage, Layer, Line, Text, Group, Rect } from 'react-konva';
-import { polygonToPoints, calculatePolygonCentroid, constrainPointToPolygon } from '../../utils/geometryUtils';
+import { polygonToPoints, calculatePolygonCentroid } from '../../utils/geometryUtils';
 import { getContrastingTextColor } from '../../utils/colorUtils';
 
 export function MapCanvas({
   tileGeometry,
   tiles,
+  tileClaims,
   selectedTile,
+  playbackHighlightTileId,
   onTileClick,
-  onLabelMove,
   scale,
   position,
   isPanning,
@@ -30,8 +31,21 @@ export function MapCanvas({
 
     // Left click on empty space (stage background) pans
     const isClickOnTile = e.target !== e.currentTarget && e.target.getClassName() === 'Line';
-    const isClickOnLabel = e.target !== e.currentTarget && e.target.getClassName() === 'Text';
-    if (evt.button === 0 && !isClickOnTile && !isClickOnLabel) {
+    const isClickOnLabel = e.target !== e.currentTarget &&
+      (e.target.getClassName() === 'Text' || e.target.getClassName() === 'Group');
+    // Check if clicking on a draggable element (label that can be repositioned)
+    const isClickOnDraggable = e.target.isDragging?.() || e.target.draggable?.() ||
+      (e.target.parent && e.target.parent.draggable?.());
+
+    console.log('MouseDown:', {
+      className: e.target.getClassName(),
+      isClickOnTile,
+      isClickOnLabel,
+      isClickOnDraggable,
+      parentDraggable: e.target.parent?.draggable?.()
+    });
+
+    if (evt.button === 0 && !isClickOnTile && !isClickOnLabel && !isClickOnDraggable) {
       onPanStart(evt.clientX, evt.clientY);
     }
   }, [onPanStart]);
@@ -94,6 +108,7 @@ export function MapCanvas({
         <Layer>
           {tileGeometry.tiles.map((tileInfo) => {
             const tileData = tiles.get(tileInfo.id) || {};
+            const claim = tileClaims?.get(tileInfo.id);
             const isSelected = selectedTile?.id === tileInfo.id;
 
             return (
@@ -101,6 +116,7 @@ export function MapCanvas({
                 key={tileInfo.id}
                 tileInfo={tileInfo}
                 tileData={tileData}
+                claim={claim}
                 isSelected={isSelected}
                 isPanning={isPanning}
                 onClick={() => !isPanning && onTileClick(tileInfo)}
@@ -111,6 +127,18 @@ export function MapCanvas({
 
         {/* Highlight Layer */}
         <Layer>
+          {/* Playback highlight - yellow pulsing effect */}
+          {playbackHighlightTileId && tileGeometry.tiles.find(t => t.id === playbackHighlightTileId) && (
+            <Line
+              points={polygonToPoints(tileGeometry.tiles.find(t => t.id === playbackHighlightTileId).polygon)}
+              stroke="#facc15"
+              strokeWidth={4}
+              fill="rgba(250, 204, 21, 0.5)"
+              closed={true}
+              listening={false}
+            />
+          )}
+          {/* Selected tile highlight - red */}
           {selectedTile && (
             <Line
               points={polygonToPoints(selectedTile.polygon)}
@@ -127,20 +155,18 @@ export function MapCanvas({
             const tileData = tiles.get(tileInfo.id) || {};
             if (!tileData.number && tileData.number !== 0 && !tileData.icon) return null;
 
+            const claim = tileClaims?.get(tileInfo.id);
             const centroid = calculatePolygonCentroid(tileInfo.polygon);
-            const textColor = getContrastingTextColor(tileData.color);
-            const isSelected = selectedTile?.id === tileInfo.id;
+            // Use claim color for text contrast if tile is claimed
+            const bgColor = claim?.color || '#f8f9fa';
+            const textColor = getContrastingTextColor(bgColor);
 
             return (
               <TileLabel
                 key={`label-${tileInfo.id}`}
-                tileId={tileInfo.id}
                 tileData={tileData}
-                polygon={tileInfo.polygon}
                 centroid={centroid}
                 textColor={textColor}
-                isSelected={isSelected}
-                onLabelMove={onLabelMove}
               />
             );
           })}
@@ -150,9 +176,11 @@ export function MapCanvas({
   );
 }
 
-function TileShape({ tileInfo, tileData, isSelected, isPanning, onClick }) {
+function TileShape({ tileInfo, tileData, claim, isSelected, isPanning, onClick }) {
   const points = polygonToPoints(tileInfo.polygon);
-  const fillColor = tileData.color || '#f8f9fa';
+  // Use claim's alliance color if tile is claimed, otherwise default background
+  const fillColor = claim?.color || '#f8f9fa';
+  const hasLabel = tileData.number !== undefined && tileData.number !== '';
 
   return (
     <Line
@@ -161,6 +189,7 @@ function TileShape({ tileInfo, tileData, isSelected, isPanning, onClick }) {
       stroke="rgba(0, 0, 0, 0.15)"
       strokeWidth={1}
       closed={true}
+      listening={!(isSelected && hasLabel)}
       onClick={onClick}
       onMouseEnter={(e) => {
         if (!isPanning) {
@@ -180,81 +209,20 @@ function TileShape({ tileInfo, tileData, isSelected, isPanning, onClick }) {
   );
 }
 
-function TileLabel({ tileId, tileData, polygon, centroid, textColor, isSelected, onLabelMove }) {
+function TileLabel({ tileData, centroid, textColor }) {
   const hasNumber = tileData.number !== undefined && tileData.number !== '';
   const hasIcon = !!tileData.icon;
-  const groupRef = useRef(null);
-  const isDraggingRef = useRef(false);
 
-  // Calculate label position from centroid + offset
+  // Calculate label position from centroid + offset (read-only)
   const labelOffset = tileData.labelOffset || { x: 0, y: 0 };
   const labelX = centroid.x + labelOffset.x;
   const labelY = centroid.y + labelOffset.y;
 
-  const handleDragStart = useCallback((e) => {
-    isDraggingRef.current = true;
-    e.target.getStage().container().style.cursor = 'grabbing';
-  }, []);
-
-  const handleDragMove = useCallback((e) => {
-    const node = e.target;
-    const newPos = { x: node.x(), y: node.y() };
-
-    // Constrain to polygon boundary
-    const constrainedPos = constrainPointToPolygon(newPos, polygon);
-
-    // Update position if constrained
-    if (constrainedPos.x !== newPos.x || constrainedPos.y !== newPos.y) {
-      node.x(constrainedPos.x);
-      node.y(constrainedPos.y);
-    }
-  }, [polygon]);
-
-  const handleDragEnd = useCallback((e) => {
-    isDraggingRef.current = false;
-    e.target.getStage().container().style.cursor = 'move';
-
-    const node = e.target;
-    const newPos = { x: node.x(), y: node.y() };
-
-    // Constrain final position
-    const constrainedPos = constrainPointToPolygon(newPos, polygon);
-
-    // Calculate offset from centroid
-    const newOffset = {
-      x: constrainedPos.x - centroid.x,
-      y: constrainedPos.y - centroid.y
-    };
-
-    // Notify parent of the move
-    if (onLabelMove) {
-      onLabelMove(tileId, newOffset);
-    }
-  }, [tileId, polygon, centroid, onLabelMove]);
-
-  const handleMouseEnter = useCallback((e) => {
-    if (isSelected && !isDraggingRef.current) {
-      e.target.getStage().container().style.cursor = 'move';
-    }
-  }, [isSelected]);
-
-  const handleMouseLeave = useCallback((e) => {
-    if (!isDraggingRef.current) {
-      e.target.getStage().container().style.cursor = 'default';
-    }
-  }, []);
-
   return (
     <Group
-      ref={groupRef}
       x={labelX}
       y={labelY}
-      draggable={isSelected}
-      onDragStart={handleDragStart}
-      onDragMove={handleDragMove}
-      onDragEnd={handleDragEnd}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
+      listening={false}
     >
       {hasNumber && (
         <Text

@@ -1,7 +1,8 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
 
-const AuthContext = createContext({})
+// Export the context so admin providers can use the same context object
+export const AuthContext = createContext({})
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
@@ -59,6 +60,7 @@ export function AuthProvider({ children }) {
     signInWithDiscord,
     signOut,
     isSupabaseConfigured,
+    isAdminMode: false,
   }
 
   return (
@@ -74,4 +76,8 @@ export function useAuth() {
     throw new Error('useAuth must be used within an AuthProvider')
   }
   return context
+}
+
+export function isUserAdmin() {
+  return false;
 }

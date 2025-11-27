@@ -17,7 +17,10 @@ export class SupabaseHistoryRepository extends IHistoryRepository {
       timestamp: new Date(row.created_at).toLocaleString(),
       action: row.action,
       details: row.details,
-      user: row.user_name
+      user: row.user_name,
+      allianceName: row.alliance_name,
+      allianceColor: row.alliance_color,
+      tileId: row.tile_id
     };
   }
 
@@ -49,7 +52,10 @@ export class SupabaseHistoryRepository extends IHistoryRepository {
         action: entry.action,
         details: entry.details,
         user_id: user?.id || null,
-        user_name: user?.user_metadata?.full_name || user?.email || 'Unknown'
+        user_name: entry.user || user?.user_metadata?.full_name || user?.email || 'Unknown',
+        alliance_name: entry.allianceName || null,
+        alliance_color: entry.allianceColor || null,
+        tile_id: entry.tileId || null
       });
 
     if (error) {

@@ -1,189 +1,164 @@
-import { useState, useEffect } from 'react';
+import { LikeButton } from './LikeButton';
+import { useGameState } from '../../contexts/GameStateContext';
+import { useAlliance } from '../../contexts/AllianceContext';
+import { useTimeline } from '../../contexts/TimelineContext';
+import { usePlanner } from '../../contexts/PlannerContext';
+import { useToast } from '../../contexts/ToastContext';
 
-const ICON_OPTIONS = [
-  { value: '', label: 'None' },
-  { value: '🏰', label: 'Castle 🏰' },
-  { value: '⚔️', label: 'Sword ⚔️' },
-  { value: '🛡️', label: 'Shield 🛡️' },
-  { value: '👑', label: 'Crown 👑' },
-  { value: '💎', label: 'Gem 💎' },
-  { value: '🔥', label: 'Fire 🔥' },
-  { value: '⭐', label: 'Star ⭐' },
-  { value: '🎯', label: 'Target 🎯' }
-];
+export function TileEditor({ selectedTile, tileData, likeSummary, onVote, isReadOnly = false }) {
+  const { claimTile, clearTile, getTileClaim, isOwnTile } = useGameState();
+  const { alliance, isAdmin } = useAlliance();
+  const { isViewingCurrentDay } = useTimeline();
+  const { isPlannerMode, planClaim, planClear, getPlannedTileClaim, planningAlliance } = usePlanner();
+  const { toast } = useToast();
 
-const inputClasses = "w-full px-3 py-2 border border-discord-lighter-gray rounded text-sm bg-discord-dark text-discord-text transition-colors duration-200 focus:outline-none focus:border-discord-blurple focus:ring-2 focus:ring-discord-blurple/20 font-inherit";
+  // Get claim info - use planner state if in planner mode
+  const tileClaim = isPlannerMode && selectedTile
+    ? getPlannedTileClaim(selectedTile.id)
+    : selectedTile ? getTileClaim(selectedTile.id) : null;
 
-export function TileEditor({ selectedTile, tileData, onSave, onClear, isReadOnly = false }) {
-  const [formData, setFormData] = useState({
-    number: '',
-    name: '',
-    icon: '',
-    color: '#36393f',
-    comments: ''
-  });
+  // In planner mode, ownership is based on the planning alliance
+  const isOwned = isPlannerMode && selectedTile
+    ? tileClaim?.allianceId === planningAlliance?.id
+    : selectedTile ? isOwnTile(selectedTile.id) : false;
 
-  // Sync form data when tile selection changes
-  useEffect(() => {
-    if (selectedTile) {
-      setFormData({
-        number: tileData.number || '',
-        name: tileData.name || '',
-        icon: tileData.icon || '',
-        color: tileData.color || '#36393f',
-        comments: tileData.comments || ''
-      });
+  const handleClaim = async () => {
+    if (!selectedTile) return;
+
+    if (isPlannerMode) {
+      planClaim(selectedTile.id);
+      return;
     }
-  }, [selectedTile, tileData]);
 
-  const handleChange = (field, value) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    // Pass isAdmin flag to bypass claiming rules
+    const result = await claimTile(selectedTile.id, isAdmin);
+    if (!result.success) {
+      toast.error(result.error || 'Failed to claim tile');
+    }
   };
 
-  const handleSave = () => {
-    onSave(selectedTile.id, formData);
-  };
+  const handleUnclaim = async () => {
+    if (!selectedTile) return;
 
-  const handleClear = () => {
-    onClear(selectedTile.id);
-    setFormData({
-      number: '',
-      name: '',
-      icon: '',
-      color: '#36393f',
-      comments: ''
-    });
+    if (isPlannerMode) {
+      planClear(selectedTile.id);
+      return;
+    }
+
+    // Pass isAdmin flag to bypass clearing rules
+    const result = await clearTile(selectedTile.id, isAdmin);
+    if (!result.success) {
+      toast.error(result.error || 'Failed to unclaim tile');
+    }
   };
 
   if (!selectedTile) {
     return (
       <div className="p-4 pt-5 border-b border-discord-lighter-gray">
-        <h2 className="text-base font-semibold mb-4 text-discord-text">Tile Editor</h2>
+        <h2 className="text-base font-semibold mb-4 text-discord-text">Tile Info</h2>
         <div className="mt-3">
           <p className="text-discord-text-muted italic text-sm">
-            {isReadOnly ? 'Sign in with Discord to edit tiles' : 'Click on a tile to edit'}
+            {isReadOnly ? 'Sign in with Discord to claim tiles' : 'Click on a tile to view details'}
           </p>
         </div>
       </div>
     );
   }
 
-  if (isReadOnly) {
-    return (
-      <div className="p-4 pt-5 border-b border-discord-lighter-gray">
-        <h2 className="text-base font-semibold mb-4 text-discord-text">Tile Viewer</h2>
-        <div className="mt-3">
-          <div className="mb-4">
-            <label className="block mb-1.5 font-medium text-sm text-discord-text-secondary">Number:</label>
-            <span className="text-discord-text text-sm">{tileData.number || '-'}</span>
-          </div>
-          <div className="mb-4">
-            <label className="block mb-1.5 font-medium text-sm text-discord-text-secondary">Name:</label>
-            <span className="text-discord-text text-sm">{tileData.name || '-'}</span>
-          </div>
-          <div className="mb-4">
-            <label className="block mb-1.5 font-medium text-sm text-discord-text-secondary">Icon:</label>
-            <span className="text-discord-text text-sm">{tileData.icon || '-'}</span>
-          </div>
-          <div className="mb-4">
-            <label className="block mb-1.5 font-medium text-sm text-discord-text-secondary">Color:</label>
-            <span className="text-discord-text text-sm inline-flex items-center gap-2">
-              <span className="w-5 h-5 rounded border border-discord-lighter-gray" style={{ backgroundColor: tileData.color || '#36393f' }}></span>
-              {tileData.color || '#36393f'}
-            </span>
-          </div>
-          {tileData.comments && (
-            <div className="mb-4">
-              <label className="block mb-1.5 font-medium text-sm text-discord-text-secondary">Notes:</label>
-              <p className="text-discord-text text-sm">{tileData.comments}</p>
-            </div>
-          )}
-          <p className="text-discord-text-muted italic text-sm">Sign in with Discord to edit</p>
-        </div>
-      </div>
-    );
-  }
+  // Determine claim button state
+  // Admin can claim any unclaimed tile on any day, regular users only on current day
+  const canClaim = alliance && (isViewingCurrentDay || isPlannerMode || isAdmin) && !tileClaim;
+  // Admin can unclaim any tile (including other alliances'), regular users only their own
+  const canUnclaim = alliance && (isViewingCurrentDay || isPlannerMode || isAdmin) && (isOwned || (isAdmin && tileClaim));
+  const isClaimedByOther = tileClaim && !isOwned && !isAdmin;
 
   return (
     <div className="p-4 pt-5 border-b border-discord-lighter-gray">
-      <h2 className="text-base font-semibold mb-4 text-discord-text">Tile Editor</h2>
+      <h2 className="text-base font-semibold mb-4 text-discord-text">Tile Info</h2>
       <div className="mt-3">
+        {/* Tile Level/Number - Read Only */}
         <div className="mb-4">
-          <label htmlFor="tileNumber" className="block mb-1.5 font-medium text-sm text-discord-text-secondary">Number:</label>
-          <input
-            type="number"
-            id="tileNumber"
-            min="0"
-            max="99"
-            value={formData.number}
-            onChange={(e) => handleChange('number', e.target.value)}
-            className={inputClasses}
+          <label className="block mb-1.5 font-medium text-sm text-discord-text-secondary">Level:</label>
+          <span className="text-discord-text text-lg font-bold">L{tileData.number || selectedTile.id}</span>
+        </div>
+
+        {/* Alliance Info - if claimed */}
+        {tileClaim && (
+          <div className="mb-4">
+            <label className="block mb-1.5 font-medium text-sm text-discord-text-secondary">Claimed by:</label>
+            <div className="flex items-center gap-2">
+              <span
+                className="w-4 h-4 rounded-full inline-block border border-discord-lighter-gray"
+                style={{ backgroundColor: tileClaim.color || '#666' }}
+              />
+              <span className="text-discord-text text-sm font-medium">{tileClaim.allianceName}</span>
+            </div>
+          </div>
+        )}
+
+        {/* Claim Status Message */}
+        {!alliance && !isReadOnly && (
+          <div className="mb-4 p-3 bg-discord-dark rounded-lg">
+            <p className="text-discord-text-muted text-sm">Join an alliance to claim tiles</p>
+          </div>
+        )}
+
+        {!isViewingCurrentDay && !isPlannerMode && !isAdmin && alliance && (
+          <div className="mb-4 p-3 bg-discord-dark rounded-lg">
+            <p className="text-discord-text-muted text-sm">Navigate to current day to claim tiles</p>
+          </div>
+        )}
+
+        {isPlannerMode && (
+          <div className="mb-4 p-2 bg-yellow-500/20 border border-yellow-500/50 rounded text-xs text-yellow-400">
+            Planner mode - changes are local only
+          </div>
+        )}
+
+        {/* Claim/Unclaim Buttons */}
+        {!isReadOnly && alliance && (isViewingCurrentDay || isPlannerMode || isAdmin) && (
+          <div className="mb-4">
+            {canClaim && (
+              <button
+                onClick={handleClaim}
+                className="w-full px-4 py-2.5 border-none rounded text-sm font-medium cursor-pointer transition-all duration-200 bg-discord-blurple text-white hover:-translate-y-0.5 hover:shadow-lg hover:bg-discord-blurple-hover active:translate-y-0"
+              >
+                Claim Tile
+              </button>
+            )}
+
+            {canUnclaim && (
+              <button
+                onClick={handleUnclaim}
+                className="w-full px-4 py-2.5 border-none rounded text-sm font-medium cursor-pointer transition-all duration-200 bg-red-500/80 text-white hover:-translate-y-0.5 hover:shadow-lg hover:bg-red-500 active:translate-y-0"
+              >
+                Unclaim Tile
+              </button>
+            )}
+
+            {isClaimedByOther && (
+              <div className="p-3 bg-discord-dark rounded-lg">
+                <p className="text-discord-text-muted text-sm">
+                  This tile is claimed by {tileClaim.allianceName}
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Votes */}
+        <div className="mb-4">
+          <label className="block mb-1.5 font-medium text-sm text-discord-text-secondary">Votes:</label>
+          <LikeButton
+            summary={likeSummary || { likes: 0, dislikes: 0, userVote: null }}
+            onVote={(type) => onVote(selectedTile.id, type)}
+            isReadOnly={isReadOnly}
           />
         </div>
 
-        <div className="mb-4">
-          <label htmlFor="tileName" className="block mb-1.5 font-medium text-sm text-discord-text-secondary">Name:</label>
-          <input
-            type="text"
-            id="tileName"
-            placeholder="Enter tile name"
-            value={formData.name}
-            onChange={(e) => handleChange('name', e.target.value)}
-            className={inputClasses}
-          />
-        </div>
-
-        <div className="mb-4">
-          <label htmlFor="tileIcon" className="block mb-1.5 font-medium text-sm text-discord-text-secondary">Icon:</label>
-          <select
-            id="tileIcon"
-            value={formData.icon}
-            onChange={(e) => handleChange('icon', e.target.value)}
-            className={inputClasses}
-          >
-            {ICON_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="mb-4">
-          <label htmlFor="tileColor" className="block mb-1.5 font-medium text-sm text-discord-text-secondary">Tile Color:</label>
-          <input
-            type="color"
-            id="tileColor"
-            value={formData.color}
-            onChange={(e) => handleChange('color', e.target.value)}
-            className="w-full h-10 p-1 cursor-pointer border border-discord-lighter-gray rounded bg-discord-dark"
-          />
-        </div>
-
-        <div className="mb-4">
-          <label htmlFor="tileComments" className="block mb-1.5 font-medium text-sm text-discord-text-secondary">Comments:</label>
-          <textarea
-            id="tileComments"
-            placeholder="Add notes about this tile..."
-            rows="3"
-            value={formData.comments}
-            onChange={(e) => handleChange('comments', e.target.value)}
-            className={`${inputClasses} resize-y min-h-[60px]`}
-          />
-        </div>
-
-        <button
-          onClick={handleSave}
-          className="w-full mb-2 px-4 py-2.5 border-none rounded text-sm font-medium cursor-pointer transition-all duration-200 bg-discord-blurple text-white hover:-translate-y-0.5 hover:shadow-lg hover:bg-discord-blurple-hover active:translate-y-0"
-        >
-          Save Tile
-        </button>
-        <button
-          onClick={handleClear}
-          className="w-full px-4 py-2.5 border-none rounded text-sm font-medium cursor-pointer transition-all duration-200 bg-discord-lightest-gray text-discord-text hover:-translate-y-0.5 hover:shadow-lg hover:bg-discord-text-muted active:translate-y-0"
-        >
-          Clear Tile
-        </button>
+        {isReadOnly && (
+          <p className="text-discord-text-muted italic text-sm">Sign in with Discord to claim tiles</p>
+        )}
       </div>
     </div>
   );

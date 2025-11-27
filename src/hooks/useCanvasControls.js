@@ -1,9 +1,32 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 
+const STORAGE_KEY = 'mapEditor_canvasState';
+
+function loadCanvasState() {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (e) {
+    console.warn('Failed to load canvas state from localStorage:', e);
+  }
+  return null;
+}
+
+function saveCanvasState(scale, position) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ scale, position }));
+  } catch (e) {
+    console.warn('Failed to save canvas state to localStorage:', e);
+  }
+}
+
 export function useCanvasControls(tileGeometry) {
   const [scale, setScale] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
+  const [hasRestoredState, setHasRestoredState] = useState(false);
   const lastPointerPosition = useRef(null);
   const containerRef = useRef(null);
   const stageRef = useRef(null);
@@ -44,12 +67,26 @@ export function useCanvasControls(tileGeometry) {
     return () => window.removeEventListener('resize', handleResize);
   }, [tileGeometry, fitToScreen]);
 
-  // Initial fit when geometry loads
+  // Initial load: restore saved state or fit to screen
   useEffect(() => {
-    if (tileGeometry) {
-      fitToScreen();
+    if (tileGeometry && !hasRestoredState) {
+      const savedState = loadCanvasState();
+      if (savedState && savedState.scale && savedState.position) {
+        setScale(savedState.scale);
+        setPosition(savedState.position);
+      } else {
+        fitToScreen();
+      }
+      setHasRestoredState(true);
     }
-  }, [tileGeometry, fitToScreen]);
+  }, [tileGeometry, hasRestoredState, fitToScreen]);
+
+  // Save state to localStorage when scale or position changes
+  useEffect(() => {
+    if (hasRestoredState) {
+      saveCanvasState(scale, position);
+    }
+  }, [scale, position, hasRestoredState]);
 
   // Zoom controls
   const zoom = useCallback((direction) => {

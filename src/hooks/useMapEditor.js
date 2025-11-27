@@ -2,21 +2,21 @@ import { useState, useCallback, useEffect } from 'react';
 import { useMapEditorService } from '../di/index.js';
 import { DEFAULT_TILE_DATA } from '../data/interfaces.js';
 import { useAuth } from '../contexts/AuthContext.jsx';
+import { useProfile } from '../contexts/ProfileContext.jsx';
 
 export function useMapEditor() {
   const mapEditorService = useMapEditorService();
   const { user } = useAuth();
+  const { displayName } = useProfile();
 
-  // Get the current user's display name from Discord auth
-  const currentUser = user?.user_metadata?.full_name
-    || user?.user_metadata?.name
-    || user?.email
-    || 'Anonymous';
+  // Get the current user's display name from profile
+  const currentUser = displayName || 'Anonymous';
 
   // Core data state (synced with persistence layer)
   const [tileGeometry, setTileGeometry] = useState(null);
   const [tiles, setTiles] = useState(new Map());
   const [comments, setComments] = useState(new Map());
+  const [likes, setLikes] = useState(new Map());
   const [history, setHistory] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -24,7 +24,7 @@ export function useMapEditor() {
   const [selectedTile, setSelectedTile] = useState(null);
 
   // UI state
-  const [activeTab, setActiveTab] = useState('comments');
+  const [activeTab, setActiveTab] = useState('moves');
   const [tileFilter, setTileFilter] = useState('');
 
   // Load initial data from persistence layer
@@ -33,16 +33,18 @@ export function useMapEditor() {
       setIsLoading(true);
       try {
         // Load all data in parallel
-        const [geometry, tilesData, commentsData, historyData] = await Promise.all([
+        const [geometry, tilesData, commentsData, likesData, historyData] = await Promise.all([
           mapEditorService.loadTileGeometry(),
           mapEditorService.getAllTiles(),
           mapEditorService.getAllComments(),
+          mapEditorService.getAllLikes(),
           mapEditorService.getHistory()
         ]);
 
         setTileGeometry(geometry);
         setTiles(tilesData);
         setComments(commentsData);
+        setLikes(likesData);
         setHistory(historyData);
         console.log(`Loaded ${geometry.tiles.length} tiles, ${tilesData.size} saved tiles, ${historyData.length} history entries`);
       } catch (error) {
@@ -163,6 +165,98 @@ export function useMapEditor() {
     return comments.get(tileId) || [];
   }, [comments]);
 
+  // Get likes for tile
+  const getLikes = useCallback((tileId) => {
+    return likes.get(tileId) || [];
+  }, [likes]);
+
+  // Get like summary for tile
+  const getLikeSummary = useCallback((tileId) => {
+    const tileLikes = likes.get(tileId) || [];
+    let likeCount = 0;
+    let dislikeCount = 0;
+    let userVote = null;
+
+    for (const like of tileLikes) {
+      if (like.type === 'like') {
+        likeCount++;
+      } else if (like.type === 'dislike') {
+        dislikeCount++;
+      }
+      if (user?.id && like.userId === user.id) {
+        userVote = like.type;
+      }
+    }
+
+    return { likes: likeCount, dislikes: dislikeCount, userVote };
+  }, [likes, user]);
+
+  // Vote on a tile (like or dislike)
+  const vote = useCallback(async (tileId, type) => {
+    if (!user?.id) return;
+
+    const currentSummary = getLikeSummary(tileId);
+
+    // If clicking the same vote type, remove the vote
+    if (currentSummary.userVote === type) {
+      // Optimistic update - remove vote
+      setLikes(prev => {
+        const newLikes = new Map(prev);
+        const tileLikes = (newLikes.get(tileId) || []).filter(l => l.userId !== user.id);
+        if (tileLikes.length > 0) {
+          newLikes.set(tileId, tileLikes);
+        } else {
+          newLikes.delete(tileId);
+        }
+        return newLikes;
+      });
+
+      try {
+        await mapEditorService.removeVote(tileId, user.id);
+      } catch (error) {
+        console.error('Error removing vote:', error);
+        // Refresh likes on error
+        const updatedLikes = await mapEditorService.getAllLikes();
+        setLikes(updatedLikes);
+      }
+    } else {
+      // Add or change vote
+      const newLike = {
+        id: `temp-${Date.now()}`,
+        user: currentUser,
+        userId: user.id,
+        type,
+        timestamp: new Date().toLocaleString()
+      };
+
+      // Optimistic update
+      setLikes(prev => {
+        const newLikes = new Map(prev);
+        const tileLikes = [...(newLikes.get(tileId) || [])];
+
+        // Remove existing vote by this user
+        const existingIndex = tileLikes.findIndex(l => l.userId === user.id);
+        if (existingIndex >= 0) {
+          tileLikes.splice(existingIndex, 1);
+        }
+
+        // Add new vote at the beginning
+        tileLikes.unshift(newLike);
+        newLikes.set(tileId, tileLikes);
+        return newLikes;
+      });
+
+      try {
+        await mapEditorService.vote(tileId, type, currentUser, user.id);
+      } catch (error) {
+        console.error('Error voting:', error);
+        // Refresh likes on error
+        const updatedLikes = await mapEditorService.getAllLikes();
+        setLikes(updatedLikes);
+      }
+    }
+  }, [user, currentUser, mapEditorService, getLikeSummary]);
+
   // Get filtered and sorted labeled tiles
   const getLabeledTiles = useCallback(() => {
     return mapEditorService.getLabeledTiles(tiles, tileFilter);
@@ -219,6 +313,11 @@ export function useMapEditor() {
     // Comments
     addComment,
     getComments,
+
+    // Likes
+    getLikes,
+    getLikeSummary,
+    vote,
 
     // UI State
     activeTab,
